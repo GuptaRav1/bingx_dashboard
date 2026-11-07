@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+  <title>Trade Terminal | Trade Dashboard</title>
+
+  <!-- Tailwind CSS CDN with forms and container queries plugins -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              obsidian: '#000000',
+              surface: '#0A0A0A',
+              card: '#121212',
+              cardHover: '#181818',
+              border: 'rgba(255, 255, 255, 0.08)',
+              accent: '#00F0A8',
+              accentMuted: 'rgba(0, 240, 168, 0.12)',
+              loss: '#FF4D6D',
+              lossMuted: 'rgba(255, 77, 109, 0.12)',
+              textMuted: '#A1A1AA'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+          },
+          boxShadow: {
+            'glow-emerald': '0 0 24px -4px rgba(0, 240, 168, 0.25)',
+            'glow-card': '0 4px 20px -2px rgba(0, 0, 0, 0.8)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link href="https://fonts.googleapis.com" rel="preconnect" />
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Custom Theme Styles -->
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body
+  class="bg-black text-neutral-100 font-sans antialiased min-h-screen selection:bg-brand-accent selection:text-black">
+  <!-- BEGIN: ApplicationLayout -->
+  <div class="max-w-[1720px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- Top Sync / Error Banners -->
+    <div id="sync-banner" class="banner hidden mb-2"></div>
+
+    <!-- BEGIN: TopHeader -->
+    <header
+      class="bg-[#0A0A0A] backdrop-blur-md border border-white/[0.08] rounded-2xl p-4 sm:p-5 shadow-glow-card transition-all"
+      data-purpose="top-header-navigation">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <!-- Left: Branding & Status Indicators -->
+        <div class="flex flex-wrap items-center gap-3 sm:gap-4">
+          <div class="flex items-center gap-3">
+            <div
+              class="h-9 w-9 rounded-xl bg-gradient-to-tr from-[#00F0A8]/20 to-[#00F0A8]/80 flex items-center justify-center border border-[#00F0A8]/40 shadow-glow-emerald">
+              <svg class="w-5 h-5 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round"
+                  stroke-width="2.5"></path>
+              </svg>
+            </div>
+            <div>
+              <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                Trade Terminal
+              </h1>
+            </div>
+          </div>
+
+          <div class="h-5 w-px bg-neutral-800 hidden sm:block"></div>
+
+          <!-- Pulsing Live Synced Badge -->
+          <div id="sync-indicator"
+            class="flex items-center gap-2 bg-[#121212] border border-white/[0.08] px-3 py-1.5 rounded-lg text-xs font-medium text-neutral-300">
+            <span class="relative flex h-2.5 w-2.5">
+              <span id="sync-ping"
+                class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span id="sync-dot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <span>Synced: <span id="sync-time-text" class="font-mono text-emerald-400 font-semibold">Never</span></span>
+          </div>
+        </div>
+
+        <!-- Right: Filtering Tools & Actions -->
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- Date Selector Widget -->
+          <div
+            class="flex items-center bg-[#121212] border border-neutral-800 focus-within:border-[#00F0A8]/50 rounded-xl px-3 py-1.5 text-xs text-neutral-300 font-mono gap-2 transition-colors">
+            <svg class="w-4 h-4 text-neutral-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+            <input type="date" id="filter-from"
+              class="bg-transparent border-0 p-0 text-xs text-white font-mono focus:ring-0 cursor-pointer" />
+            <span class="text-neutral-500 font-sans">to</span>
+            <input type="date" id="filter-to"
+              class="bg-transparent border-0 p-0 text-xs text-white font-mono focus:ring-0 cursor-pointer" />
+          </div>
+
+          <!-- Trades Count Tag -->
+          <div id="trade-count-badge"
+            class="bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs font-semibold px-3 py-1.5 rounded-xl font-mono flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[#00F0A8]"></span>
+            0 Trades
+          </div>
+
+          <!-- Resync Primary Button -->
+          <button id="resync-btn"
+            class="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl border border-blue-400/30 shadow-lg shadow-blue-600/20 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            data-purpose="resync-button">
+            <svg class="w-3.5 h-3.5" id="btn-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
+            </svg>
+            <span class="spinner hidden" id="btn-spinner"></span>
+            <span id="btn-label">Resync</span>
+          </button>
+        </div>
+      </div>
+      <div id="filter-error" class="text-rose-400 text-xs font-medium mt-3 hidden">From must be on or before To</div>
+    </header>
+    <!-- END: TopHeader -->
+
+    <!-- BEGIN: Block 1 - Cumulative PnL & Equity Metrics -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      <!-- Left: 3 Equity Metrics (Balance, Profit Factor, MDD) (3 cols) -->
+      <div class="metrics-grid lg:col-span-3 min-w-0 flex flex-col justify-between gap-4"
+        data-purpose="equity-metrics-column">
+        <!-- Card 1: Balance -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="absolute -right-4 -bottom-4 w-20 h-20 bg-emerald-500/5 rounded-full blur-xl pointer-events-none">
+          </div>
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">CURRENT BALANCE</span>
+            <span
+              class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 font-mono font-medium border border-emerald-500/20">LIVE</span>
+          </div>
+          <div class="flex items-baseline gap-1.5 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
+              id="metric-balance">—</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+          </div>
+          <div class="text-[11px] text-neutral-500 mt-2 truncate font-mono" id="metric-balance-subtitle">
+            not synced yet
+          </div>
+        </div>
+
+        <!-- Card 2: Profit Factor -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">PROFIT FACTOR</span>
+            <span id="metric-profit-factor-badge"
+              class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20">Σ
+              gains / |Σ losses|</span>
+          </div>
+          <div class="flex items-baseline gap-1 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
+              id="metric-profit-factor">—</span>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 truncate font-mono">
+            Σ gains / |Σ losses|
+          </div>
+        </div>
+
+        <!-- Card 3: Max Drawdown (MDD) -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">MAX DRAWDOWN (MDD)</span>
+            <span
+              class="text-rose-400 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-rose-500/10 border border-rose-500/20">PEAK-TO-TROUGH</span>
+          </div>
+          <div class="flex items-baseline gap-1.5 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-rose-400 font-mono tabular-nums"
+              id="metric-mdd">—</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 truncate font-mono" id="metric-mdd-subtitle">
+            Max drop from peak equity
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Cumulative PnL Chart (9 cols) -->
+      <div class="lg:col-span-9 min-w-0 flex flex-col">
+        <section
+          class="chart-section bg-[#0A0A0A] rounded-2xl p-5 sm:p-6 border border-white/[0.08] shadow-glow-card flex-1 flex flex-col justify-between"
+          data-purpose="cumulative-pnl-chart">
+          <!-- Chart Header Bar -->
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <h2 class="text-lg font-bold text-white tracking-tight">Cumulative PnL</h2>
+              <div class="text-xs text-neutral-400 mt-0.5">Chronological cumulative return over filtered range</div>
+            </div>
+            <div id="chart-total-pnl"
+              class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-semibold shrink-0">
+              <span>0.0000 USDT</span>
+            </div>
+          </div>
+          <!-- Chart Container with Chart.js Canvas -->
+          <div class="chart-container relative w-full h-[320px] sm:h-[350px]">
+            <canvas id="pnl-chart"></canvas>
+          </div>
+        </section>
+      </div>
+    </div>
+    <!-- END: Block 1 -->
+
+    <!-- BEGIN: Block 2 - PnL Per Trade Chart & Execution Metrics -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      <!-- Left: PnL Per Trade Chart (9 cols, order-2 on mobile, order-1 on lg) -->
+      <div class="lg:col-span-9 min-w-0 flex flex-col order-2 lg:order-1">
+        <section
+          class="chart-section-bar bg-[#0A0A0A] rounded-2xl p-5 sm:p-6 border border-white/[0.08] shadow-glow-card flex-1 flex flex-col justify-between"
+          data-purpose="trade-pnl-chart">
+          <!-- Chart Header Bar -->
+          <div class="flex items-center justify-between gap-4 mb-4">
+            <div>
+              <h2 class="text-lg font-bold text-white tracking-tight">PnL Per Trade</h2>
+              <div class="text-xs text-neutral-400 mt-0.5">Chronological net return for each execution</div>
+            </div>
+            <div id="chart-trade-pnl-summary"
+              class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono text-xs font-semibold shrink-0">
+              <span>0 Trades</span>
+            </div>
+          </div>
+          <!-- Chart Container with Chart.js Canvas -->
+          <div class="chart-container relative w-full h-[320px] sm:h-[350px]">
+            <canvas id="trade-pnl-chart"></canvas>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right: 3 Execution Metrics (Avg PnL, Win Streak, Loss Streak) (3 cols, order-1 on mobile, order-2 on lg) -->
+      <div class="metrics-grid lg:col-span-3 min-w-0 flex flex-col justify-between gap-4 order-1 lg:order-2"
+        data-purpose="execution-metrics-column">
+        <!-- Card 4: Avg PnL / Trade -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">AVG PNL / TRADE</span>
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+              </path>
+            </svg>
+          </div>
+          <div class="flex items-baseline gap-1.5 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
+              id="metric-avg-pnl">—</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 truncate">
+            Across filtered range
+          </div>
+        </div>
+
+        <!-- Card 5: Longest Win Streak -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">MAX WIN STREAK</span>
+            <span class="text-amber-400 text-xs">🔥</span>
+          </div>
+          <div class="flex items-baseline gap-2 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-emerald-400 font-mono tabular-nums"
+              id="metric-win-streak">—</span>
+            <span class="text-xs text-neutral-400 font-mono font-medium">trades</span>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 truncate">
+            Consecutive wins
+          </div>
+        </div>
+
+        <!-- Card 6: Longest Loss Streak -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">MAX LOSS STREAK</span>
+            <span class="text-rose-400 text-xs">⚠️</span>
+          </div>
+          <div class="flex items-baseline gap-2 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-rose-400 font-mono tabular-nums"
+              id="metric-loss-streak">—</span>
+            <span class="text-xs text-neutral-400 font-mono font-medium">trades</span>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 truncate">
+            Consecutive losses
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- END: Block 2 -->
+
+    <!-- BEGIN: Block 3 - Calendar & Consistency / Cost Metrics -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      <!-- Left: 3 Consistency & Cost Metrics (Win Rate, Total Fees, Avg Duration) (3 cols) -->
+      <div class="metrics-grid lg:col-span-3 min-w-0 flex flex-col justify-between gap-4"
+        data-purpose="consistency-metrics-column">
+        <!-- Card 7: Win Rate -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">WIN RATE</span>
+            <span class="text-[10px] text-neutral-400 font-mono" id="metric-total-trades">— total</span>
+          </div>
+          <div class="flex items-center justify-between my-1">
+            <div class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
+              id="metric-win-rate">—
+            </div>
+            <!-- Mini Radial indicator -->
+            <div class="relative w-8 h-8 flex items-center justify-center">
+              <svg class="w-8 h-8 -rotate-90" viewBox="0 0 36 36">
+                <path class="text-neutral-800"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none"
+                  stroke="currentColor" stroke-width="3.5"></path>
+                <path id="metric-win-rate-circle" class="text-emerald-400 transition-all duration-500"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none"
+                  stroke="currentColor" stroke-dasharray="0, 100" stroke-linecap="round" stroke-width="3.5"></path>
+              </svg>
+            </div>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 flex items-center justify-between"
+            id="metric-win-rate-subtitle">
+            <span class="text-neutral-500">wins / total trades</span>
+          </div>
+        </div>
+
+        <!-- Card 8: Total Fees Paid & Fee Drag % -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">TOTAL FEES PAID</span>
+            <span id="metric-fee-drag-badge"
+              class="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/10 text-amber-400 font-mono font-medium border border-amber-500/20">FEE
+              DRAG: —</span>
+          </div>
+          <div class="flex items-baseline gap-1.5 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
+              id="metric-total-fees">—</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 truncate font-mono" id="metric-fee-subtitle">
+            Total commission paid to broker
+          </div>
+        </div>
+
+        <!-- Card 9: Average Trade Duration (Holding Time) -->
+        <div
+          class="metric-card bg-[#0A0A0A] rounded-2xl p-4 xl:p-5 border border-white/[0.08] relative overflow-hidden group hover:border-white/[0.16] transition-all flex-1 flex flex-col justify-between">
+          <div class="flex items-center justify-between text-xs text-neutral-400 mb-2">
+            <span class="font-medium tracking-wide">AVG TRADE DURATION</span>
+            <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"
+                stroke-width="2"></path>
+            </svg>
+          </div>
+          <div class="flex items-baseline gap-2 my-1">
+            <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
+              id="metric-avg-duration">—</span>
+          </div>
+          <div class="text-[11px] text-neutral-400 mt-2 truncate font-mono" id="metric-duration-subtitle">
+            Win: — | Loss: —
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: PnL Calendar Section (9 cols) -->
+      <div class="lg:col-span-9 min-w-0 flex flex-col">
+        <section
+          class="calendar-section bg-[#0A0A0A] rounded-2xl p-5 sm:p-6 border border-white/[0.08] shadow-glow-card flex-1 flex flex-col justify-between"
+          data-purpose="monthly-calendar-matrix">
+          <!-- Calendar Navigation Header -->
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-1 bg-[#121212] border border-neutral-800 p-1 rounded-xl">
+                <button id="cal-prev-btn" aria-label="Previous Month"
+                  class="p-1.5 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M15 19l-7-7 7-7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
+                  </svg>
+                </button>
+                <span id="cal-month-label" class="px-3 text-sm font-semibold text-white tracking-wide">November
+                  2026</span>
+                <button id="cal-next-btn" aria-label="Next Month"
+                  class="p-1.5 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-white transition-colors">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path d="M9 5l7 7-7 7" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <!-- Month Total Tag -->
+              <div id="cal-month-total"
+                class="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 px-3.5 py-1.5 rounded-xl font-mono text-xs">
+                <span class="text-neutral-400 font-sans font-medium">Month Total:</span>
+                <span class="text-emerald-400 font-bold text-sm">0.00</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Calendar Days Matrix Container -->
+          <div class="calendar-wrapper overflow-x-auto">
+            <table class="calendar-table w-full border-collapse min-w-[560px]">
+              <thead>
+                <tr
+                  class="grid grid-cols-8 gap-2 mb-2 text-center text-xs font-semibold text-neutral-400 uppercase tracking-wider">
+                  <th class="py-1">Sun</th>
+                  <th class="py-1">Mon</th>
+                  <th class="py-1">Tue</th>
+                  <th class="py-1">Wed</th>
+                  <th class="py-1">Thu</th>
+                  <th class="py-1">Fri</th>
+                  <th class="py-1">Sat</th>
+                  <th class="py-1 text-neutral-300 bg-neutral-900 border border-neutral-800 rounded">Weekly</th>
+                </tr>
+              </thead>
+              <tbody id="calendar-body">
+                <!-- Dynamically populated by app.js -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+    <!-- END: Block 3 -->
+
+    <!-- BEGIN: TradeHistoryTable -->
+    <section class="bg-[#0A0A0A] rounded-2xl border border-white/[0.08] shadow-glow-card overflow-hidden"
+      data-purpose="execution-orders-table">
+      <!-- Table Filter and Header Control Bar -->
+      <div class="p-5 border-b border-neutral-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <h3 class="text-base font-bold text-white tracking-tight">Trade History Log</h3>
+          <span id="table-count-badge"
+            class="bg-neutral-900 text-neutral-300 font-mono text-xs px-2.5 py-0.5 rounded-full border border-neutral-800 font-semibold">0
+            Executions</span>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <!-- Search input by symbol -->
+          <div class="relative">
+            <svg class="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round"
+                stroke-width="2"></path>
+            </svg>
+            <input id="symbol-search-input"
+              class="bg-[#121212] border border-neutral-800 text-xs text-white pl-9 pr-3 py-1.5 rounded-xl focus:outline-none focus:border-[#00F0A8] transition w-60 font-mono"
+              placeholder="Filter symbol (e.g. BTC)..." type="text" />
+          </div>
+
+          <!-- Position Side Pills -->
+          <div
+            class="bg-[#121212] border border-neutral-800 p-1 rounded-xl flex items-center text-xs font-medium text-neutral-400">
+            <button id="filter-side-all"
+              class="px-2.5 py-1 bg-neutral-800 text-white rounded shadow-sm transition">All</button>
+            <button id="filter-side-long" class="px-2.5 py-1 hover:text-emerald-400 transition-colors">Long</button>
+            <button id="filter-side-short" class="px-2.5 py-1 hover:text-rose-400 transition-colors">Short</button>
+          </div>
+
+          <!-- Export CSV action -->
+          <button id="export-csv-btn"
+            class="flex items-center gap-1.5 bg-[#121212] hover:bg-neutral-800 border border-neutral-800 text-xs font-medium text-neutral-300 px-3 py-1.5 rounded-xl transition cursor-pointer">
+            <svg class="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round"
+                stroke-linejoin="round" stroke-width="2"></path>
+            </svg>
+            <span>Export</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Responsive Table View (Order ID and Leverage removed per request) -->
+      <div class="table-wrapper overflow-x-auto">
+        <table id="positions-table" class="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr
+              class="border-b border-neutral-800 bg-[#000000] text-neutral-400 font-semibold uppercase tracking-wider text-[11px]">
+              <th class="py-3 px-4 col-symbol">Instrument</th>
+              <th class="py-3 px-4 col-direction">Side</th>
+              <th class="py-3 px-4 text-right col-quantity">Qty</th>
+              <th class="py-3 px-4 col-desktop col-opentime">Entry Time (IST)</th>
+              <th class="py-3 px-4 col-closetime">Exit Time (IST)</th>
+              <th class="py-3 px-4 text-right col-desktop col-entryprice">Entry Price</th>
+              <th class="py-3 px-4 text-right col-desktop col-exitprice">Exit Price</th>
+              <th class="py-3 px-4 text-right col-desktop col-fee">Fee</th>
+              <th class="py-3 px-4 text-right col-netpnl">Net PnL</th>
+              <th class="py-3 px-4 col-desktop col-note">Note</th>
+            </tr>
+          </thead>
+          <tbody id="positions-body" class="divide-y divide-neutral-800/60 font-mono tabular-nums text-neutral-200">
+            <tr>
+              <td colspan="10" class="empty-cell text-center py-8 text-neutral-400">Loading positions...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Table Pagination Footer -->
+      <div
+        class="p-4 border-t border-neutral-800 bg-[#000000]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-neutral-400">
+        <div id="table-pagination-info">
+          Showing <span class="text-white font-mono font-semibold" id="table-showing-count">0</span> executions
+        </div>
+      </div>
+    </section>
+    <!-- END: TradeHistoryTable -->
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+  <!-- END: ApplicationLayout -->
+
+  <script src="/static/app.js"></script>
+</body>
+
+</html>

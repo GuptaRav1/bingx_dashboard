@@ -1,0 +1,317 @@
+/* Trade Terminal / Trade Dashboard - Modern Pure Black OLED Theme */
+
+:root {
+  --bg-obsidian: #000000;
+  --bg-surface: #0A0A0A;
+  --bg-card: #121212;
+  --bg-card-hover: #181818;
+  --border-color: rgba(255, 255, 255, 0.08);
+  --accent-emerald: #00F0A8;
+  --accent-loss: #FF4D6D;
+  --text-main: #f8fafc;
+  --text-muted: #a3a3a3;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #000000;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #262626;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #404040;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* General Layout Elements */
+.metrics-grid {
+  /* Class hooked by test suite */
+}
+
+.chart-section {
+  /* Class hooked by test suite */
+}
+
+.table-wrapper {
+  /* Class hooked by test suite */
+}
+
+/* Spinner */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Direction Badges */
+.badge-long {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: rgba(0, 240, 168, 0.12);
+  color: #00F0A8;
+  border: 1px solid rgba(0, 240, 168, 0.3);
+}
+
+.badge-short {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: rgba(255, 77, 109, 0.12);
+  color: #FF4D6D;
+  border: 1px solid rgba(255, 77, 109, 0.3);
+}
+
+/* PnL Colors */
+.pnl-pos {
+  color: #00F0A8;
+}
+
+.pnl-neg {
+  color: #FF4D6D;
+}
+
+.pnl-zero {
+  color: #8492A6;
+}
+
+/* Flagged Row Border (PRD §11.6: 3px amber left border) */
+tbody tr.flagged td:first-child {
+  border-left: 3px solid #f59e0b !important;
+}
+
+.note-cell {
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Calendar Cells */
+.cal-cell {
+  height: 65px;
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+}
+
+.cal-cell-empty {
+  background-color: rgba(18, 18, 18, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cal-cell-empty:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.cal-cell-pos {
+  background-color: rgba(6, 78, 59, 0.25);
+  border: 1px solid rgba(0, 240, 168, 0.3);
+}
+
+.cal-cell-pos:hover {
+  border-color: rgba(0, 240, 168, 0.6);
+}
+
+.cal-cell-neg {
+  background-color: rgba(136, 19, 55, 0.2);
+  border: 1px solid rgba(255, 77, 109, 0.3);
+}
+
+.cal-cell-neg:hover {
+  border-color: rgba(255, 77, 109, 0.6);
+}
+
+.cal-cell-adjacent {
+  background-color: rgba(10, 10, 10, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  opacity: 0.35;
+}
+
+.cal-cell-total {
+  background-color: #121212;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Responsive Table Rules (PRD §11.6) */
+@media (min-width: 1024px) {
+  .col-desktop {
+    display: table-cell;
+  }
+
+  .accordion-toggle {
+    display: none !important;
+  }
+
+  .trade-detail-row {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  .col-desktop {
+    display: none !important;
+  }
+
+  .trade-row {
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .accordion-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    transition: transform 0.2s ease, color 0.2s ease;
+    user-select: none;
+    margin-left: 6px;
+  }
+
+  .trade-row.expanded .accordion-toggle {
+    transform: rotate(180deg);
+    color: #00F0A8;
+  }
+
+  .trade-row.expanded {
+    background-color: rgba(0, 240, 168, 0.05);
+  }
+
+  tbody tr.flagged td.col-symbol {
+    border-left: 3px solid #f59e0b !important;
+  }
+
+  tbody tr.trade-detail-row td {
+    padding: 0 !important;
+    background-color: #0A0A0A;
+  }
+
+  .trade-detail-content {
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  tbody tr.trade-detail-row.flagged .trade-detail-content {
+    border-left: 3px solid #f59e0b;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+
+  .detail-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .detail-field-full {
+    grid-column: 1 / -1;
+  }
+
+  .detail-label {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+  }
+
+  .detail-val {
+    font-size: 0.8125rem;
+  }
+}
+
+/* Banners & Toast */
+.banner {
+  padding: 12px 18px;
+  border-radius: 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: opacity 0.3s ease;
+}
+
+.banner-active {
+  background-color: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  color: #93c5fd;
+}
+
+.banner-success {
+  background-color: rgba(0, 240, 168, 0.12);
+  border: 1px solid rgba(0, 240, 168, 0.3);
+  color: #00F0A8;
+}
+
+.banner-warning {
+  background-color: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fcd34d;
+}
+
+.banner-error {
+  background-color: rgba(255, 77, 109, 0.15);
+  border: 1px solid rgba(255, 77, 109, 0.4);
+  color: #fca5a5;
+}
+
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background-color: #121212;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 12px 20px;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8);
+  font-size: 0.875rem;
+  z-index: 100;
+  transition: opacity 0.3s ease;
+}
+
+.hidden {
+  display: none !important;
+}
