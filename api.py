@@ -7,12 +7,14 @@ import time
 import json
 import logging
 import threading
+import tempfile
 from typing import Any
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, send_file
 
 import config
 import db
 import sync
+import backup
 import time_utils
 
 logger = logging.getLogger(__name__)
@@ -170,4 +172,29 @@ def get_sync_status():
         "started_at": _progress.get("started_at"),
         "last_result": last_res,
     }), 200
+
+
+@api_bp.route("/backup/download", methods=["GET"])
+@api_bp.route("/api/backup/download", methods=["GET"])
+def download_backup():
+    """
+    GET /api/backup/download
+    Safely creates a consistent SQLite backup snapshot and returns it as a download.
+    """
+    try:
+        conn = db.get_db()
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp_path = tmp.name
+        tmp.close()
+        backup.create_sqlite_snapshot(conn, tmp_path)
+        date_str = time.strftime("%Y%m%d_%H%M%S")
+        return send_file(
+            tmp_path,
+            as_attachment=True,
+            download_name=f"trades_backup_{date_str}.db",
+            mimetype="application/x-sqlite3",
+        )
+    except Exception as e:
+        logger.exception("Failed to generate database download")
+        return jsonify({"error": "Failed to create database backup"}), 500
 

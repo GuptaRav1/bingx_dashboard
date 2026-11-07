@@ -14,6 +14,7 @@ import bingx_client
 from bingx_client import BingxError
 import db
 import positions
+import backup
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +170,17 @@ def run(progress: Optional[dict[str, Any]] = None, conn: Optional[sqlite3.Connec
         if sync_succeeded:
             db.set_meta("last_synced_at", str(finished_at), conn=conn)
         db.set_meta("last_sync_result", json.dumps(summary), conn=conn)
+
+        # Trigger database backup if configured (Telegram)
+        try:
+            backup_res = backup.send_backup_if_configured(conn, summary=summary)
+            if backup_res:
+                summary["backup"] = backup_res
+                db.set_meta("last_sync_result", json.dumps(summary), conn=conn)
+        except Exception as e:
+            logger.warning(f"Database backup dispatch failed: {e}")
+            summary["backup_error"] = str(e)
+            db.set_meta("last_sync_result", json.dumps(summary), conn=conn)
 
         prog["last_result"] = summary
         logger.info(

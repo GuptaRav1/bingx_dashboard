@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 # BingX API settings
-BINGX_BASE_URL = os.getenv("BINGX_BASE_URL", "https://open-api.bingx.pro").rstrip("/")
+BINGX_BASE_URL = os.getenv("BINGX_BASE_URL", "https://open-api.bingx.com").rstrip("/")
 BINGX_API_KEY = os.getenv("BINGX_API_KEY", "").strip()
 BINGX_API_SECRET = os.getenv("BINGX_API_SECRET", "").strip()
 

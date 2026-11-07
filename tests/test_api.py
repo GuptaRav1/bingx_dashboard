@@ -205,6 +205,12 @@ class TestApiRoutes(unittest.TestCase):
         self.assertIn("window_index", status_data)
         self.assertIn("window_total", status_data)
 
+    def test_download_backup(self):
+        res = self.client.get("/api/backup/download")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.mimetype, "application/x-sqlite3")
+        self.assertTrue(len(res.data) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()
