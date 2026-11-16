@@ -22,6 +22,8 @@
     tradeChartInstance: null,
     calendarYear: null,
     calendarMonth: null, // 1-indexed (1=Jan, 12=Dec)
+    currency: localStorage.getItem("preferred_currency") || "USDT", // "USDT" or "INR"
+    inrRate: parseFloat(localStorage.getItem("inr_rate")) || 89.0, // USDT/INR exchange rate
   };
 
   // ---------------------------------------------------------------------------
@@ -116,6 +118,119 @@
       minimumFractionDigits: 0,
       maximumFractionDigits: maxDecimals,
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Currency Conversion & Management (USDT <-> INR)
+  // ---------------------------------------------------------------------------
+
+  /** Converts USDT amount to selected currency (USDT or INR) */
+  function toDisplayVal(usdtVal) {
+    if (usdtVal === null || usdtVal === undefined || isNaN(usdtVal)) return null;
+    return state.currency === "INR" ? usdtVal * state.inrRate : usdtVal;
+  }
+
+  /** Returns active currency label (USDT or INR) */
+  function getCurrencyUnit() {
+    return state.currency === "INR" ? "INR" : "USDT";
+  }
+
+  /** Returns currency prefix (₹ for INR, empty for USDT) */
+  function getCurrencyPrefix() {
+    return state.currency === "INR" ? "₹" : "";
+  }
+
+  /** Returns standard decimals for active currency (2 for INR, 4 for USDT) */
+  function getCurrencyDecimals() {
+    return state.currency === "INR" ? 2 : 4;
+  }
+
+  /** Fetches latest USDT/INR exchange rate from free API with fallback */
+  async function fetchInrRate() {
+    const rateBadge = document.getElementById("inr-rate-badge");
+    try {
+      // 1. Try CoinGecko tether INR price
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=inr");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.tether && data.tether.inr) {
+          state.inrRate = Number(data.tether.inr);
+          localStorage.setItem("inr_rate", String(state.inrRate));
+        }
+      } else {
+        // 2. Fallback to Open Exchange Rates API
+        const res2 = await fetch("https://open.er-api.com/v6/latest/USD");
+        if (res2.ok) {
+          const data2 = await res2.json();
+          if (data2 && data2.rates && data2.rates.INR) {
+            state.inrRate = Number(data2.rates.INR);
+            localStorage.setItem("inr_rate", String(state.inrRate));
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch live USDT/INR rate, using fallback rate:", state.inrRate, err);
+    } finally {
+      if (rateBadge) {
+        rateBadge.textContent = `1$ ≈ ₹${state.inrRate.toFixed(2)}`;
+      }
+    }
+  }
+
+  function updateCurrencyUI() {
+    const usdtBtn = document.getElementById("curr-usdt-btn");
+    const inrBtn = document.getElementById("curr-inr-btn");
+    const rateBadge = document.getElementById("inr-rate-badge");
+
+    if (rateBadge && state.inrRate) {
+      rateBadge.textContent = `1$ ≈ ₹${state.inrRate.toFixed(2)}`;
+    }
+
+    if (usdtBtn && inrBtn) {
+      if (state.currency === "INR") {
+        inrBtn.className = "px-2.5 py-1 rounded-lg font-semibold transition-all bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        usdtBtn.className = "px-2.5 py-1 rounded-lg font-semibold transition-all text-neutral-400 hover:text-white border border-transparent";
+      } else {
+        usdtBtn.className = "px-2.5 py-1 rounded-lg font-semibold transition-all bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        inrBtn.className = "px-2.5 py-1 rounded-lg font-semibold transition-all text-neutral-400 hover:text-white border border-transparent";
+      }
+    }
+
+    // Update static card unit badges
+    document.querySelectorAll(".currency-unit-label").forEach((el) => {
+      el.textContent = state.currency === "INR" ? "INR" : "USDT";
+    });
+  }
+
+  function setCurrency(currency) {
+    if (state.currency === currency) return;
+    state.currency = currency;
+    localStorage.setItem("preferred_currency", currency);
+    updateCurrencyUI();
+
+    // Re-render UI components with new currency
+    if (state.balance) renderBalance(state.balance);
+    if (state.derived) {
+      renderMetrics(state.derived.metrics, state.allPositions);
+      renderChart(state.derived.chartPoints);
+      renderTradeBarChart(state.allPositions);
+      renderCalendar(state.derived.calendar);
+    }
+    renderTable(state.allPositions);
+  }
+
+  function setupCurrencyToggle() {
+    const usdtBtn = document.getElementById("curr-usdt-btn");
+    const inrBtn = document.getElementById("curr-inr-btn");
+
+    if (usdtBtn) {
+      usdtBtn.addEventListener("click", () => setCurrency("USDT"));
+    }
+    if (inrBtn) {
+      inrBtn.addEventListener("click", () => setCurrency("INR"));
+    }
+
+    updateCurrencyUI();
   }
 
   // ---------------------------------------------------------------------------
@@ -346,7 +461,10 @@
       return;
     }
 
-    balEl.textContent = fmtNum(bal.balance, 4);
+    const dispVal = toDisplayVal(bal.balance);
+    const prefix = getCurrencyPrefix();
+    const d = getCurrencyDecimals();
+    balEl.textContent = `${prefix}${fmtNum(dispVal, d)}`;
     subEl.textContent = `as of ${fmtIstShort(bal.ts)}`;
   }
 
@@ -410,7 +528,10 @@
         avgEl.textContent = "—";
         avgEl.className = "text-2xl font-bold tracking-tight text-white font-mono tabular-nums";
       } else {
-        const valStr = `${metrics.avgPnl >= 0 ? "+" : ""}${fmtNum(metrics.avgPnl, 4)}`;
+        const val = toDisplayVal(metrics.avgPnl);
+        const prefix = getCurrencyPrefix();
+        const d = getCurrencyDecimals();
+        const valStr = `${val >= 0 ? "+" : "-"}${prefix}${fmtNum(Math.abs(val), d)}`;
         avgEl.textContent = valStr;
         avgEl.className = `text-2xl font-bold tracking-tight font-mono tabular-nums ${metrics.avgPnl >= 0 ? "text-emerald-400" : "text-rose-400"}`;
       }
@@ -432,11 +553,14 @@
     const mddSub = document.getElementById("metric-mdd-subtitle");
     if (mddEl) {
       if (metrics.mdd && metrics.mdd.val !== null) {
+        const val = toDisplayVal(metrics.mdd.val);
+        const prefix = getCurrencyPrefix();
+        const d = getCurrencyDecimals();
         if (metrics.mdd.val > 0) {
-          mddEl.textContent = `-${fmtNum(metrics.mdd.val, 4)}`;
+          mddEl.textContent = `-${prefix}${fmtNum(val, d)}`;
           mddEl.className = "text-2xl font-bold tracking-tight text-rose-400 font-mono tabular-nums";
         } else {
-          mddEl.textContent = "0.0000";
+          mddEl.textContent = `${prefix}${d === 2 ? "0.00" : "0.0000"}`;
           mddEl.className = "text-2xl font-bold tracking-tight text-neutral-400 font-mono tabular-nums";
         }
       } else {
@@ -453,7 +577,14 @@
     const feeBadge = document.getElementById("metric-fee-drag-badge");
     const feeSub = document.getElementById("metric-fee-subtitle");
     if (feeEl) {
-      feeEl.textContent = metrics.fees && metrics.fees.totalFees !== null ? fmtNum(metrics.fees.totalFees, 4) : "—";
+      if (metrics.fees && metrics.fees.totalFees !== null) {
+        const val = toDisplayVal(metrics.fees.totalFees);
+        const prefix = getCurrencyPrefix();
+        const d = getCurrencyDecimals();
+        feeEl.textContent = `${prefix}${fmtNum(val, d)}`;
+      } else {
+        feeEl.textContent = "—";
+      }
     }
     if (feeBadge) {
       if (metrics.fees && metrics.fees.feeDrag !== null) {
@@ -496,12 +627,16 @@
     const badge = document.getElementById("chart-total-pnl");
     if (!canvas || typeof Chart === "undefined") return;
 
-    const finalPnl = chartPoints.length > 0 ? chartPoints[chartPoints.length - 1].y : 0;
+    const finalRaw = chartPoints.length > 0 ? chartPoints[chartPoints.length - 1].y : 0;
+    const finalPnl = toDisplayVal(finalRaw);
     const isPositive = finalPnl >= 0;
+    const prefix = getCurrencyPrefix();
+    const unit = getCurrencyUnit();
+    const d = getCurrencyDecimals();
 
     // Update Header Badge
     if (badge) {
-      const pnlFormatted = `${finalPnl >= 0 ? "+" : ""}${fmtNum(finalPnl, 4)} USDT`;
+      const pnlFormatted = `${finalPnl >= 0 ? "+" : "-"}${prefix}${fmtNum(Math.abs(finalPnl), d)} ${unit}`;
       badge.innerHTML = `<span>${pnlFormatted}</span>`;
       badge.className = `flex items-center gap-1.5 px-3.5 py-1.5 rounded-full font-mono text-xs font-semibold shrink-0 ${finalPnl >= 0
         ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-400"
@@ -510,7 +645,7 @@
     }
 
     const labels = chartPoints.map((p) => (p.x === 0 ? "0" : `#${p.x}`));
-    const dataValues = chartPoints.map((p) => p.y);
+    const dataValues = chartPoints.map((p) => toDisplayVal(p.y));
 
     const strokeColor = isPositive ? "#00F0A8" : "#FF4D6D";
 
@@ -574,7 +709,7 @@
             ticks: {
               color: "#737373",
               font: { family: 'JetBrains Mono, monospace', size: 11 },
-              callback: (val) => Number(val).toLocaleString() + " USDT",
+              callback: (val) => Number(val).toLocaleString(),
             },
             title: {
               display: true,
@@ -598,15 +733,17 @@
               title: function (items) {
                 const idx = items[0].dataIndex;
                 const pt = chartPoints[idx];
-                if (!pt || !pt.trade) return "Baseline (0 USDT)";
+                if (!pt || !pt.trade) return `Baseline (0 ${unit})`;
                 return `Trade #${pt.x} (${pt.trade.symbol} ${pt.trade.direction})`;
               },
               label: function (item) {
                 const idx = item.dataIndex;
                 const pt = chartPoints[idx];
-                if (!pt || !pt.trade) return "Cum PnL: 0.0000 USDT";
-                const cumStr = `${pt.y >= 0 ? "+" : ""}${fmtNum(pt.y, 4)} USDT`;
-                const trdStr = `${pt.trade.net_pnl >= 0 ? "+" : ""}${fmtNum(pt.trade.net_pnl, 4)} USDT`;
+                if (!pt || !pt.trade) return `Cum PnL: 0 ${unit}`;
+                const cumVal = toDisplayVal(pt.y);
+                const trdVal = toDisplayVal(pt.trade.net_pnl);
+                const cumStr = `${cumVal >= 0 ? "+" : "-"}${prefix}${fmtNum(Math.abs(cumVal), d)} ${unit}`;
+                const trdStr = `${trdVal >= 0 ? "+" : "-"}${prefix}${fmtNum(Math.abs(trdVal), d)} ${unit}`;
                 return [
                   `Cumulative PnL: ${cumStr}`,
                   `Trade Net PnL: ${trdStr}`,
@@ -658,7 +795,7 @@
     }
 
     const labels = sorted.map((_, idx) => `#${idx + 1}`);
-    const dataValues = sorted.map((p) => p.net_pnl || 0);
+    const dataValues = sorted.map((p) => toDisplayVal(p.net_pnl || 0));
     const bgColors = dataValues.map((val) =>
       val >= 0 ? "rgba(0, 240, 168, 0.85)" : "rgba(255, 77, 109, 0.85)"
     );
@@ -705,7 +842,7 @@
             ticks: {
               color: "#737373",
               font: { family: 'JetBrains Mono, monospace', size: 11 },
-              callback: (val) => Number(val).toLocaleString() + " USDT",
+              callback: (val) => Number(val).toLocaleString(),
             },
             title: {
               display: true,
@@ -736,12 +873,18 @@
                 const idx = item.dataIndex;
                 const t = sorted[idx];
                 if (!t) return "";
-                const netSign = t.net_pnl >= 0 ? "+" : "";
-                const grossSign = t.gross_pnl >= 0 ? "+" : "";
+                const prefix = getCurrencyPrefix();
+                const unit = getCurrencyUnit();
+                const d = getCurrencyDecimals();
+                const netVal = toDisplayVal(t.net_pnl);
+                const grossVal = toDisplayVal(t.gross_pnl);
+                const feeVal = toDisplayVal(t.fees);
+                const netSign = netVal >= 0 ? "+" : "-";
+                const grossSign = grossVal >= 0 ? "+" : "-";
                 return [
-                  `Net PnL: ${netSign}${fmtNum(t.net_pnl, 4)} USDT`,
-                  `Gross PnL: ${grossSign}${fmtNum(t.gross_pnl, 4)} USDT`,
-                  `Fee: ${fmtNum(t.fees, 4)} USDT`,
+                  `Net PnL: ${netSign}${prefix}${fmtNum(Math.abs(netVal), d)} ${unit}`,
+                  `Gross PnL: ${grossSign}${prefix}${fmtNum(Math.abs(grossVal), d)} ${unit}`,
+                  `Fee: ${prefix}${fmtNum(feeVal, d)} ${unit}`,
                   `Closed: ${fmtIst(t.close_time)}`,
                 ];
               },
@@ -808,12 +951,15 @@
           const dayData = isWithinFilter && calendarMap ? calendarMap[dayStr] : null;
 
           if (dayData && dayData.count > 0) {
-            const val = Number(dayData.netPnl.toFixed(4));
+            const rawVal = Number(dayData.netPnl.toFixed(4));
+            const val = toDisplayVal(rawVal);
             const isPos = val >= 0;
-            const sign = isPos ? "+" : "";
+            const sign = isPos ? "+" : "-";
             const cellClass = isPos ? "cal-cell cal-cell-pos" : "cal-cell cal-cell-neg";
             const textClass = isPos ? "text-emerald-400" : "text-rose-400";
             const dotClass = isPos ? "bg-emerald-400" : "bg-rose-500";
+            const prefix = getCurrencyPrefix();
+            const calDecimals = state.currency === "INR" ? 0 : 2;
 
             weekHtml += `
               <div class="${cellClass}">
@@ -823,7 +969,7 @@
                 </div>
                 <div class="flex justify-between items-baseline">
                   <span class="text-xs text-neutral-500 font-mono font-medium">${dayData.count}T</span>
-                  <span class="font-mono text-xs font-bold ${textClass}">${sign}${fmtNum(val, 2)}</span>
+                  <span class="font-mono text-xs font-bold ${textClass}">${sign}${prefix}${fmtNum(Math.abs(val), calDecimals)}</span>
                 </div>
               </div>
             `;
@@ -856,21 +1002,23 @@
 
       // Week Total Column (Column 8, PRD §11.5)
       let weekTotalContent = "";
+      const prefix = getCurrencyPrefix();
+      const calDecimals = state.currency === "INR" ? 0 : 2;
       if (weekHasTrades) {
-        const wVal = Number(weekTotal.toFixed(4));
+        const wVal = weekTotal;
         const wCls = wVal >= 0 ? "text-emerald-400" : "text-rose-400";
-        const wSign = wVal >= 0 ? "+" : "";
+        const wSign = wVal >= 0 ? "+" : "-";
         weekTotalContent = `
           <div class="flex justify-between items-baseline w-full">
             <span class="text-xs text-neutral-500 font-mono font-medium">${weekTradesCount}T</span>
-            <span class="font-mono text-xs font-bold ${wCls}">${wSign}${fmtNum(wVal, 2)}</span>
+            <span class="font-mono text-xs font-bold ${wCls}">${wSign}${prefix}${fmtNum(Math.abs(wVal), calDecimals)}</span>
           </div>
         `;
       } else {
         weekTotalContent = `
           <div class="flex justify-between items-baseline w-full">
             <span class="text-xs text-neutral-600 font-mono">0T</span>
-            <span class="text-xs font-mono text-neutral-500">0.00</span>
+            <span class="text-xs font-mono text-neutral-500">${prefix}0.00</span>
           </div>
         `;
       }
@@ -896,17 +1044,18 @@
 
     // Update Month Total Summary
     if (totalEl) {
+      const prefix = getCurrencyPrefix();
       if (monthHasTrades) {
-        const mSign = monthTotal >= 0 ? "+" : "";
+        const mSign = monthTotal >= 0 ? "+" : "-";
         const mCls = monthTotal >= 0 ? "text-emerald-400" : "text-rose-400";
         totalEl.innerHTML = `
           <span class="text-neutral-400 font-sans font-medium">Month Total:</span>
-          <span class="font-bold text-sm font-mono ${mCls}">${mSign}${fmtNum(monthTotal, 2)}</span>
+          <span class="font-bold text-sm font-mono ${mCls}">${mSign}${prefix}${fmtNum(Math.abs(monthTotal), 2)}</span>
         `;
       } else {
         totalEl.innerHTML = `
           <span class="text-neutral-400 font-sans font-medium">Month Total:</span>
-          <span class="text-neutral-500 font-mono font-bold text-sm">0.00</span>
+          <span class="text-neutral-500 font-mono font-bold text-sm">${prefix}0.00</span>
         `;
       }
     }
@@ -984,10 +1133,16 @@
       const directionBadge = `<span class="${badgeClass}">${p.direction || "—"}</span>`;
 
       const netClass = p.net_pnl > 0 ? "text-emerald-400" : p.net_pnl < 0 ? "text-rose-400" : "text-neutral-400";
-      const netSign = p.net_pnl > 0 ? "+" : "";
+      const netSign = p.net_pnl > 0 ? "+" : p.net_pnl < 0 ? "-" : "";
 
       const flaggedClass = p.note ? "flagged" : "";
       const noteHtml = p.note ? `<span class="note-cell">${p.note}</span>` : '<span class="text-neutral-600">—</span>';
+
+      const prefix = getCurrencyPrefix();
+      const d = getCurrencyDecimals();
+      const dispFee = toDisplayVal(p.fees);
+      const dispNet = toDisplayVal(p.net_pnl);
+      const dispGross = toDisplayVal(p.gross_pnl);
 
       return `
         <tr class="trade-row hover:bg-neutral-900/60 transition-colors group ${flaggedClass}" data-pos-id="${p.position_id}">
@@ -1003,8 +1158,8 @@
           <td class="py-3 px-4 text-neutral-400 col-closetime">${fmtIst(p.close_time)}</td>
           <td class="py-3 px-4 text-right text-neutral-300 col-desktop col-entryprice">${p.entry_price !== null ? fmtNum(p.entry_price, 8) : "—"}</td>
           <td class="py-3 px-4 text-right text-neutral-300 col-desktop col-exitprice">${fmtNum(p.exit_price, 8)}</td>
-          <td class="py-3 px-4 text-right text-neutral-400 col-desktop col-fee">${fmtNum(p.fees, 4)}</td>
-          <td class="py-3 px-4 text-right font-bold ${netClass} col-netpnl">${netSign}${fmtNum(p.net_pnl, 4)}</td>
+          <td class="py-3 px-4 text-right text-neutral-400 col-desktop col-fee">${prefix}${fmtNum(dispFee, d)}</td>
+          <td class="py-3 px-4 text-right font-bold ${netClass} col-netpnl">${netSign}${prefix}${fmtNum(Math.abs(dispNet), d)}</td>
           <td class="py-3 px-4 col-desktop col-note">${noteHtml}</td>
         </tr>
         <tr class="trade-detail-row hidden ${flaggedClass}" id="detail-${p.position_id}">
@@ -1033,15 +1188,15 @@
                 </div>
                 <div class="detail-field">
                   <span class="detail-label">Fee</span>
-                  <span class="detail-val font-mono">${fmtNum(p.fees, 4)}</span>
+                  <span class="detail-val font-mono">${prefix}${fmtNum(dispFee, d)}</span>
                 </div>
                 <div class="detail-field">
                   <span class="detail-label">Gross PnL</span>
-                  <span class="detail-val font-mono">${fmtNum(p.gross_pnl, 4)}</span>
+                  <span class="detail-val font-mono">${prefix}${fmtNum(dispGross, d)}</span>
                 </div>
                 <div class="detail-field">
                   <span class="detail-label">Net PnL</span>
-                  <span class="detail-val font-mono font-bold ${netClass}">${netSign}${fmtNum(p.net_pnl, 4)}</span>
+                  <span class="detail-val font-mono font-bold ${netClass}">${netSign}${prefix}${fmtNum(Math.abs(dispNet), d)}</span>
                 </div>
                 <div class="detail-field">
                   <span class="detail-label">Entry Time (IST)</span>
@@ -1503,6 +1658,9 @@
     const toDateParts = state.to.split("-");
     state.calendarYear = parseInt(toDateParts[0], 10);
     state.calendarMonth = parseInt(toDateParts[1], 10);
+
+    setupCurrencyToggle();
+    fetchInrRate();
 
     setupFilterBar();
     setupCalendarNav();

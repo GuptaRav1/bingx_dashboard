@@ -114,6 +114,23 @@
               class="bg-transparent border-0 p-0 text-xs text-white font-mono focus:ring-0 cursor-pointer" />
           </div>
 
+          <!-- Currency Switcher Toggle (USDT / INR) -->
+          <div class="flex items-center bg-[#121212] border border-neutral-800 rounded-xl p-0.5 text-xs font-mono">
+            <button id="curr-usdt-btn" type="button"
+              class="px-2.5 py-1 rounded-lg font-semibold transition-all bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+              title="Show values in Tether (USDT)">
+              USDT
+            </button>
+            <button id="curr-inr-btn" type="button"
+              class="px-2.5 py-1 rounded-lg font-semibold transition-all text-neutral-400 hover:text-white border border-transparent"
+              title="Show values in Indian Rupee (INR)">
+              ₹ INR
+            </button>
+            <span id="inr-rate-badge" class="hidden sm:inline-block text-[10px] text-neutral-500 px-2 py-0.5 border-l border-neutral-800/80" title="USDT / INR Conversion Rate">
+              1$ ≈ ₹89.00
+            </span>
+          </div>
+
           <!-- Trades Count Tag -->
           <div id="trade-count-badge"
             class="bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs font-semibold px-3 py-1.5 rounded-xl font-mono flex items-center gap-1.5">
@@ -157,7 +174,7 @@
           <div class="flex items-baseline gap-1.5 my-1">
             <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
               id="metric-balance">—</span>
-            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono currency-unit-label">USDT</span>
           </div>
           <div class="text-[11px] text-neutral-500 mt-2 truncate font-mono" id="metric-balance-subtitle">
             not synced yet
@@ -193,7 +210,7 @@
           <div class="flex items-baseline gap-1.5 my-1">
             <span class="text-xl xl:text-2xl font-bold tracking-tight text-rose-400 font-mono tabular-nums"
               id="metric-mdd">—</span>
-            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono currency-unit-label">USDT</span>
           </div>
           <div class="text-[11px] text-neutral-400 mt-2 truncate font-mono" id="metric-mdd-subtitle">
             Max drop from peak equity
@@ -210,7 +227,6 @@
           <div class="flex items-center justify-between gap-4 mb-4">
             <div>
               <h2 class="text-lg font-bold text-white tracking-tight">Cumulative PnL</h2>
-              <div class="text-xs text-neutral-400 mt-0.5">Chronological cumulative return over filtered range</div>
             </div>
             <div id="chart-total-pnl"
               class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-semibold shrink-0">
@@ -237,7 +253,6 @@
           <div class="flex items-center justify-between gap-4 mb-4">
             <div>
               <h2 class="text-lg font-bold text-white tracking-tight">PnL Per Trade</h2>
-              <div class="text-xs text-neutral-400 mt-0.5">Chronological net return for each execution</div>
             </div>
             <div id="chart-trade-pnl-summary"
               class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono text-xs font-semibold shrink-0">
@@ -267,7 +282,7 @@
           <div class="flex items-baseline gap-1.5 my-1">
             <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
               id="metric-avg-pnl">—</span>
-            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono currency-unit-label">USDT</span>
           </div>
           <div class="text-[11px] text-neutral-400 mt-2 truncate">
             Across filtered range
@@ -357,7 +372,7 @@
           <div class="flex items-baseline gap-1.5 my-1">
             <span class="text-xl xl:text-2xl font-bold tracking-tight text-white font-mono tabular-nums"
               id="metric-total-fees">—</span>
-            <span class="text-xs font-semibold text-neutral-400 font-mono">USDT</span>
+            <span class="text-xs font-semibold text-neutral-400 font-mono currency-unit-label">USDT</span>
           </div>
           <div class="text-[11px] text-neutral-400 mt-2 truncate font-mono" id="metric-fee-subtitle">
             Total commission paid to broker
@@ -494,7 +509,8 @@
             class="flex items-center gap-1.5 bg-[#121212] hover:bg-neutral-800 border border-neutral-800 text-xs font-medium text-neutral-300 px-3 py-1.5 rounded-xl transition cursor-pointer"
             title="Download SQLite Database Backup">
             <svg class="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7c0-2-1.5-3-3.5-3h-9C5.5 4 4 5 4 7zm0 5h16M9 4v4m6-4v4" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+              <path d="M4 7v10c0 2 1.5 3 3.5 3h9c2 0 3.5-1 3.5-3V7c0-2-1.5-3-3.5-3h-9C5.5 4 4 5 4 7zm0 5h16M9 4v4m6-4v4"
+                stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
             </svg>
             <span>Backup DB</span>
           </a>
