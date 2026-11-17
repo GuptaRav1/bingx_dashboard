@@ -53,22 +53,38 @@ def build_windows(
 
 def get_sync_range(conn: sqlite3.Connection) -> tuple[int, int]:
     """
-    Computes (start_ms, end_ms) for the sync run (PRD Section 7.1):
-    - First-ever sync: start = max(cutoff_epoch_ms, now - 89 days), end = now.
-    - Subsequent syncs: start = now - 89 days, end = now.
+    Computes (start_ms, end_ms) for the sync run:
+    - If orders exist in DB: start from (latest_order_time - 1 hour lookback buffer)
+      so only new orders are queried, with a 1-hour overlap to catch boundary fills.
+    - If no orders exist in DB (first sync or reset): start from max(cutoff_epoch_ms, now - 89 days).
+    - Clamped within retention limit (now - 89 days) and not exceeding now.
     """
     now = int(time.time() * 1000)
     retention_ms = config.HISTORY_DAYS * 24 * 3600 * 1000
     earliest_allowed = now - retention_ms
 
-    last_synced_at = db.get_meta("last_synced_at", conn=conn)
-    if not last_synced_at:
-        # First-ever sync
-        start = max(config.CUTOFF_EPOCH_MS, earliest_allowed)
-    else:
-        # Subsequent rolling sync
-        start = earliest_allowed
+    latest_order_time = db.get_latest_order_time(conn=conn)
 
+    if latest_order_time is not None:
+        # Buffer of 1 hour (3600 * 1000 ms) to capture boundary updates / late fills
+        BUFFER_MS = 60 * 60 * 1000
+        start = max(config.CUTOFF_EPOCH_MS, latest_order_time - BUFFER_MS)
+    else:
+        # Check last_synced_at as secondary fallback
+        last_synced_at = db.get_meta("last_synced_at", conn=conn)
+        if last_synced_at:
+            try:
+                last_ms = int(last_synced_at)
+                BUFFER_MS = 60 * 60 * 1000
+                start = max(config.CUTOFF_EPOCH_MS, last_ms - BUFFER_MS)
+            except (ValueError, TypeError):
+                start = max(config.CUTOFF_EPOCH_MS, earliest_allowed)
+        else:
+            # First-ever sync
+            start = max(config.CUTOFF_EPOCH_MS, earliest_allowed)
+
+    start = max(start, earliest_allowed)
+    start = min(start, now)
     return start, now
 
 
@@ -126,10 +142,12 @@ def run(progress: Optional[dict[str, Any]] = None, conn: Optional[sqlite3.Connec
                 time.sleep(config.RATE_LIMIT_SLEEP)
                 continue
 
-            # Check for 1000 orders truncation warning (PRD Section 5.1, §7.2)
-            if len(orders) == 1000:
-                logger.warning(f"Window {i + 1} ({ws} -> {we}) returned exactly 1000 orders (truncated).")
-                warnings.append({"window": [ws, we], "reason": "truncated"})
+            # Check for high-volume orders or safety cap warning
+            if len(orders) >= 100_000:
+                logger.warning(f"Window {i + 1} ({ws} -> {we}) reached 100,000 orders safety cap.")
+                warnings.append({"window": [ws, we], "reason": "safety_cap_reached"})
+            elif len(orders) >= 1000:
+                logger.info(f"Window {i + 1} ({ws} -> {we}) fetched {len(orders)} orders via pagination.")
 
             ins, upd = db.upsert_orders(orders, conn=conn)
             inserted_orders += ins

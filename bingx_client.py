@@ -87,22 +87,65 @@ def _signed_get(path: str, params: dict[str, str]) -> Any:
 
 def fetch_orders_window(start_ms: int, end_ms: int) -> list[dict]:
     """
-    Fetches one window of historical orders (<= 7 days).
-    PRD Section 5.1:
-    - Path: /openApi/swap/v2/trade/allOrders
-    - Params: startTime, endTime, limit=1000, timestamp
-    - symbol is omitted to return orders across all symbols
+    Fetches one window of historical orders (<= 7 days) with automatic pagination.
+    If the response returns 1000 orders, it automatically paginates from the latest
+    order timestamp up to end_ms so no trades are lost for high-frequency bots.
     """
     path = "/openApi/swap/v2/trade/allOrders"
-    params = {
-        "startTime": str(start_ms),
-        "endTime": str(end_ms),
-        "limit": "1000",
-    }
-    data = _signed_get(path, params)
-    if isinstance(data, dict):
-        return data.get("orders", [])
-    return []
+    all_orders: list[dict] = []
+    seen_order_ids: set[Any] = set()
+    curr_start = start_ms
+    max_pages = 100  # Safety limit: up to 100,000 orders per 7-day window
+
+    for page in range(max_pages):
+        if curr_start > end_ms:
+            break
+
+        params = {
+            "startTime": str(curr_start),
+            "endTime": str(end_ms),
+            "limit": "1000",
+        }
+        data = _signed_get(path, params)
+        if not isinstance(data, dict):
+            break
+
+        batch = data.get("orders", [])
+        if not batch:
+            break
+
+        new_count = 0
+        for o in batch:
+            oid = o.get("orderId")
+            if oid is not None and oid not in seen_order_ids:
+                seen_order_ids.add(oid)
+                all_orders.append(o)
+                new_count += 1
+            elif oid is None:
+                all_orders.append(o)
+                new_count += 1
+
+        # If fewer than 1000 orders returned, we have reached the end of this window
+        if len(batch) < 1000:
+            break
+
+        # 1000 orders returned -> paginate to fetch remaining orders
+        logger.info(
+            f"Pagination triggered: Window [{start_ms} -> {end_ms}] hit 1000 orders page {page + 1}. "
+            f"Advancing from {curr_start}..."
+        )
+        max_ts = max(int(o.get("updateTime") or o.get("time") or 0) for o in batch)
+        if max_ts <= 0:
+            break
+
+        if max_ts > curr_start:
+            curr_start = max_ts
+        else:
+            curr_start = max_ts + 1
+
+        time.sleep(config.RATE_LIMIT_SLEEP)
+
+    return all_orders
 
 
 def fetch_balance() -> dict:

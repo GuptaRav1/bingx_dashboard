@@ -251,6 +251,27 @@ def insert_balance_snapshot(snap: dict, conn: Optional[sqlite3.Connection] = Non
             conn.close()
 
 
+def get_latest_order_time(conn: Optional[sqlite3.Connection] = None) -> Optional[int]:
+    """
+    Returns the maximum update_time epoch ms among existing orders in the database.
+    Returns None if no orders exist.
+    """
+    close_when_done = False
+    if conn is None:
+        conn = get_db()
+        close_when_done = not has_app_context()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(update_time) AS max_time FROM orders")
+        row = cur.fetchone()
+        if row and row["max_time"] is not None:
+            return int(row["max_time"])
+        return None
+    finally:
+        if close_when_done:
+            conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Orders Queries
 # ---------------------------------------------------------------------------

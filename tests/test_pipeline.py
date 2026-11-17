@@ -145,17 +145,56 @@ class TestPipeline(unittest.TestCase):
         with open(config.SCHEMA_PATH, "r") as f:
             conn.executescript(f.read())
 
-        # First sync range
+        # First sync range (empty database)
         s1, e1 = sync.get_sync_range(conn)
         self.assertEqual(s1, config.CUTOFF_EPOCH_MS)
 
-        # Subsequent sync range
-        db.set_meta("last_synced_at", str(now), conn=conn)
+        # Subsequent sync range when orders exist in DB
+        trade_time = config.CUTOFF_EPOCH_MS + (24 * 3600 * 1000)  # 1 day after cutoff
+        db.upsert_orders(
+            [{
+                "orderId": 101,
+                "symbol": "BTC-USDT",
+                "positionID": "pos1",
+                "positionSide": "LONG",
+                "status": "FILLED",
+                "reduceOnly": False,
+                "updateTime": trade_time,
+            }],
+            conn=conn,
+        )
+
         s2, e2 = sync.get_sync_range(conn)
-        self.assertLess(s2, config.CUTOFF_EPOCH_MS)
-        self.assertEqual(s2, e2 - (89 * 24 * 3600 * 1000))
+        expected_s2 = trade_time - (3600 * 1000)
+        self.assertEqual(s2, expected_s2)
 
         conn.close()
+
+    def test_fetch_orders_window_pagination(self):
+        """Tests that fetch_orders_window automatically paginates when 1000 orders are returned."""
+        import bingx_client
+
+        # Mock page 1 returning 1000 orders (timestamp 1000 to 2000)
+        page1 = [
+            {"orderId": i, "symbol": "BTC-USDT", "updateTime": 1000 + i, "status": "FILLED"}
+            for i in range(1000)
+        ]
+        # Mock page 2 returning 200 orders (timestamp 2000 to 2200)
+        page2 = [
+            {"orderId": 1000 + i, "symbol": "BTC-USDT", "updateTime": 2000 + i, "status": "FILLED"}
+            for i in range(200)
+        ]
+
+        responses = [
+            {"orders": page1},
+            {"orders": page2},
+        ]
+
+        with patch("bingx_client._signed_get", side_effect=responses) as mock_get, \
+             patch("time.sleep", return_value=None):
+            orders = bingx_client.fetch_orders_window(1000, 3000)
+            self.assertEqual(len(orders), 1200)
+            self.assertEqual(mock_get.call_count, 2)
 
     def test_sync_pipeline_run(self):
         conn = sqlite3.connect(":memory:")
