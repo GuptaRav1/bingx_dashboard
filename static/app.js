@@ -212,8 +212,8 @@
     if (state.balance) renderBalance(state.balance);
     if (state.derived) {
       renderMetrics(state.derived.metrics, state.allPositions);
-      renderChart(state.derived.chartPoints);
-      renderTradeBarChart(state.allPositions);
+      renderChart(state.derived.dailySeries);
+      renderTradeBarChart(state.derived.dailySeries);
       renderCalendar(state.derived.calendar);
     }
     renderTable(state.allPositions);
@@ -300,27 +300,63 @@
     return { win: maxWin, loss: maxLoss };
   }
 
-  /** Cumulative PnL points (PRD Section 13.5) */
-  function computeCumulativePoints(positions) {
+  /** Daily series aggregation for Daily Net PnL Bar Chart & Daily Cumulative Curve */
+  function computeDailySeries(positions) {
     if (!positions || positions.length === 0) {
-      return [{ x: 0, y: 0, trade: null }];
+      return [];
     }
 
-    const sorted = [...positions].sort((a, b) => (a.close_time || 0) - (b.close_time || 0));
+    const dailyMap = {};
+    for (const p of positions) {
+      if (!p.close_time) continue;
+      const dateStr = fmtIstDateOnly(p.close_time);
+      if (!dateStr) continue;
 
-    let running = 0;
-    const points = [{ x: 0, y: 0, trade: null }];
+      if (!dailyMap[dateStr]) {
+        dailyMap[dateStr] = {
+          date: dateStr,
+          netPnl: 0,
+          grossPnl: 0,
+          fees: 0,
+          count: 0,
+          wins: 0,
+          losses: 0,
+          trades: [],
+        };
+      }
+      const net = p.net_pnl || 0;
+      dailyMap[dateStr].netPnl += net;
+      dailyMap[dateStr].grossPnl += p.gross_pnl || 0;
+      dailyMap[dateStr].fees += p.fees || 0;
+      dailyMap[dateStr].count += 1;
+      if (net > 0) dailyMap[dateStr].wins += 1;
+      else if (net < 0) dailyMap[dateStr].losses += 1;
+      dailyMap[dateStr].trades.push(p);
+    }
 
-    sorted.forEach((t, idx) => {
-      running += t.net_pnl || 0;
-      points.push({
-        x: idx + 1,
-        y: running,
-        trade: t,
-      });
-    });
+    const dates = Object.keys(dailyMap).sort();
+    let runningCum = 0;
+    const series = [];
 
-    return points;
+    for (const d of dates) {
+      const item = dailyMap[d];
+      runningCum += item.netPnl;
+      item.cumPnl = runningCum;
+
+      const [year, month, day] = d.split("-").map(Number);
+      const dt = new Date(Date.UTC(year, month - 1, day));
+      item.label = dt.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+      item.fullLabel = dt.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+
+      series.push(item);
+    }
+
+    return series;
+  }
+
+  /** Cumulative PnL points (Daily granularity) */
+  function computeCumulativePoints(positions) {
+    return computeDailySeries(positions);
   }
 
   /** Calendar daily PnL mapping { "YYYY-MM-DD": { netPnl: number, count: number } } (PRD §13.6) */
@@ -430,6 +466,7 @@
 
   /** Master computation pipeline (SYSTEM_DESIGN.md Section 9) */
   function computeAll(positions) {
+    const dailySeries = computeDailySeries(positions);
     return {
       metrics: {
         winRate: computeWinRate(positions),
@@ -441,7 +478,8 @@
         fees: computeFeeStats(positions),
         duration: computeDurationStats(positions),
       },
-      chartPoints: computeCumulativePoints(positions),
+      dailySeries: dailySeries,
+      chartPoints: dailySeries,
       calendar: computeCalendarData(positions),
     };
   }
@@ -622,17 +660,23 @@
     }
   }
 
-  function renderChart(chartPoints) {
+  function renderChart(seriesOrPositions) {
     const canvas = document.getElementById("pnl-chart");
     const badge = document.getElementById("chart-total-pnl");
     if (!canvas || typeof Chart === "undefined") return;
 
-    const finalRaw = chartPoints.length > 0 ? chartPoints[chartPoints.length - 1].y : 0;
-    const finalPnl = toDisplayVal(finalRaw);
-    const isPositive = finalPnl >= 0;
+    let daily = seriesOrPositions;
+    if (!daily || !Array.isArray(daily) || (daily.length > 0 && !("cumPnl" in daily[0]))) {
+      daily = computeDailySeries(state.allPositions);
+    }
+
     const prefix = getCurrencyPrefix();
     const unit = getCurrencyUnit();
     const d = getCurrencyDecimals();
+
+    const finalRaw = daily.length > 0 ? daily[daily.length - 1].cumPnl : 0;
+    const finalPnl = toDisplayVal(finalRaw);
+    const isPositive = finalPnl >= 0;
 
     // Update Header Badge
     if (badge) {
@@ -644,8 +688,8 @@
         }`;
     }
 
-    const labels = chartPoints.map((p) => (p.x === 0 ? "0" : `#${p.x}`));
-    const dataValues = chartPoints.map((p) => toDisplayVal(p.y));
+    const labels = daily.length > 0 ? daily.map((item) => item.label) : ["No Data"];
+    const dataValues = daily.length > 0 ? daily.map((item) => toDisplayVal(item.cumPnl)) : [0];
 
     const strokeColor = isPositive ? "#00F0A8" : "#FF4D6D";
 
@@ -678,8 +722,8 @@
             backgroundColor: gradient,
             borderWidth: 2.5,
             fill: true,
-            tension: 0,
-            pointRadius: chartPoints.length > 60 ? 0 : 3,
+            tension: 0.15,
+            pointRadius: daily.length > 45 ? 0 : 3,
             pointHoverRadius: 6,
             pointBackgroundColor: strokeColor,
           },
@@ -695,11 +739,11 @@
             ticks: {
               color: "#737373",
               font: { family: 'JetBrains Mono, monospace', size: 11 },
-              maxTicksLimit: 15,
+              maxTicksLimit: 12,
             },
             title: {
               display: true,
-              text: "Trade #",
+              text: "Date",
               color: "#A3A3A3",
               font: { size: 11, weight: "bold" },
             },
@@ -732,22 +776,22 @@
             callbacks: {
               title: function (items) {
                 const idx = items[0].dataIndex;
-                const pt = chartPoints[idx];
-                if (!pt || !pt.trade) return `Baseline (0 ${unit})`;
-                return `Trade #${pt.x} (${pt.trade.symbol} ${pt.trade.direction})`;
+                const item = daily[idx];
+                if (!item) return "";
+                return item.fullLabel;
               },
               label: function (item) {
                 const idx = item.dataIndex;
-                const pt = chartPoints[idx];
-                if (!pt || !pt.trade) return `Cum PnL: 0 ${unit}`;
-                const cumVal = toDisplayVal(pt.y);
-                const trdVal = toDisplayVal(pt.trade.net_pnl);
+                const day = daily[idx];
+                if (!day) return `Cum PnL: 0 ${unit}`;
+                const cumVal = toDisplayVal(day.cumPnl);
+                const dayVal = toDisplayVal(day.netPnl);
                 const cumStr = `${cumVal >= 0 ? "+" : "-"}${prefix}${fmtNum(Math.abs(cumVal), d)} ${unit}`;
-                const trdStr = `${trdVal >= 0 ? "+" : "-"}${prefix}${fmtNum(Math.abs(trdVal), d)} ${unit}`;
+                const dayStr = `${dayVal >= 0 ? "+" : "-"}${prefix}${fmtNum(Math.abs(dayVal), d)} ${unit}`;
                 return [
                   `Cumulative PnL: ${cumStr}`,
-                  `Trade Net PnL: ${trdStr}`,
-                  `Closed: ${fmtIst(pt.trade.close_time)}`,
+                  `Day Net PnL: ${dayStr}`,
+                  `Trades: ${day.count} (${day.wins}W / ${day.losses}L)`,
                 ];
               },
             },
@@ -757,34 +801,43 @@
     });
   }
 
-  function renderTradeBarChart(positions) {
+  function renderTradeBarChart(seriesOrPositions) {
     const canvas = document.getElementById("trade-pnl-chart");
     const summaryBadge = document.getElementById("chart-trade-pnl-summary");
     if (!canvas || typeof Chart === "undefined") return;
 
-    const list = positions || [];
-    // Sort ascending by close_time (chronological execution order)
-    const sorted = [...list].sort((a, b) => (a.close_time || 0) - (b.close_time || 0));
+    let daily = seriesOrPositions;
+    if (!daily || !Array.isArray(daily) || (daily.length > 0 && !("cumPnl" in daily[0]))) {
+      daily = computeDailySeries(state.allPositions);
+    }
 
-    let wins = 0;
-    let losses = 0;
-    sorted.forEach((p) => {
-      if ((p.net_pnl || 0) > 0) wins++;
-      else if ((p.net_pnl || 0) < 0) losses++;
+    const prefix = getCurrencyPrefix();
+    const unit = getCurrencyUnit();
+    const d = getCurrencyDecimals();
+
+    let winDays = 0;
+    let lossDays = 0;
+    let totalTrades = 0;
+    daily.forEach((day) => {
+      if (day.netPnl > 0) winDays++;
+      else if (day.netPnl < 0) lossDays++;
+      totalTrades += day.count || 0;
     });
 
     if (summaryBadge) {
-      if (sorted.length > 0) {
+      if (daily.length > 0) {
         summaryBadge.innerHTML = `
-          <span>${sorted.length} Trades</span>
+          <span>${daily.length} Days</span>
           <span class="text-neutral-500 font-sans font-normal">|</span>
-          <span class="text-emerald-400 font-bold">${wins}W</span>
+          <span class="text-emerald-400 font-bold">${winDays}W</span>
           <span class="text-neutral-500 font-sans font-normal">/</span>
-          <span class="text-rose-400 font-bold">${losses}L</span>
+          <span class="text-rose-400 font-bold">${lossDays}L</span>
+          <span class="text-neutral-500 font-sans font-normal">|</span>
+          <span class="text-neutral-400 font-mono text-[11px]">${totalTrades} Trades</span>
         `;
         summaryBadge.className = "flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono text-xs font-semibold shrink-0";
       } else {
-        summaryBadge.innerHTML = `<span>0 Trades</span>`;
+        summaryBadge.innerHTML = `<span>0 Days</span>`;
         summaryBadge.className = "flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-400 font-mono text-xs font-semibold shrink-0";
       }
     }
@@ -794,8 +847,8 @@
       state.tradeChartInstance = null;
     }
 
-    const labels = sorted.map((_, idx) => `#${idx + 1}`);
-    const dataValues = sorted.map((p) => toDisplayVal(p.net_pnl || 0));
+    const labels = daily.length > 0 ? daily.map((item) => item.label) : ["No Data"];
+    const dataValues = daily.length > 0 ? daily.map((item) => toDisplayVal(item.netPnl)) : [0];
     const bgColors = dataValues.map((val) =>
       val >= 0 ? "rgba(0, 240, 168, 0.85)" : "rgba(255, 77, 109, 0.85)"
     );
@@ -808,13 +861,13 @@
         labels: labels,
         datasets: [
           {
-            label: "Net PnL",
+            label: "Daily Net PnL",
             data: dataValues,
             backgroundColor: bgColors,
             borderColor: borderColors,
-            borderWidth: 1,
+            borderWidth: daily.length > 50 ? 0 : 1,
             borderRadius: 4,
-            maxBarThickness: 32,
+            maxBarThickness: 36,
           },
         ],
       },
@@ -828,11 +881,11 @@
             ticks: {
               color: "#737373",
               font: { family: 'JetBrains Mono, monospace', size: 11 },
-              maxTicksLimit: 15,
+              maxTicksLimit: 12,
             },
             title: {
               display: true,
-              text: "Trade #",
+              text: "Date",
               color: "#A3A3A3",
               font: { size: 11, weight: "bold" },
             },
@@ -865,27 +918,27 @@
             callbacks: {
               title: function (items) {
                 const idx = items[0].dataIndex;
-                const t = sorted[idx];
-                if (!t) return "";
-                return `Trade #${idx + 1} (${t.symbol} ${t.direction})`;
+                const day = daily[idx];
+                if (!day) return "";
+                return day.fullLabel;
               },
               label: function (item) {
                 const idx = item.dataIndex;
-                const t = sorted[idx];
-                if (!t) return "";
-                const prefix = getCurrencyPrefix();
-                const unit = getCurrencyUnit();
-                const d = getCurrencyDecimals();
-                const netVal = toDisplayVal(t.net_pnl);
-                const grossVal = toDisplayVal(t.gross_pnl);
-                const feeVal = toDisplayVal(t.fees);
+                const day = daily[idx];
+                if (!day) return "";
+                const netVal = toDisplayVal(day.netPnl);
+                const grossVal = toDisplayVal(day.grossPnl);
+                const feeVal = toDisplayVal(day.fees);
+                const cumVal = toDisplayVal(day.cumPnl);
                 const netSign = netVal >= 0 ? "+" : "-";
                 const grossSign = grossVal >= 0 ? "+" : "-";
+                const cumSign = cumVal >= 0 ? "+" : "-";
                 return [
-                  `Net PnL: ${netSign}${prefix}${fmtNum(Math.abs(netVal), d)} ${unit}`,
-                  `Gross PnL: ${grossSign}${prefix}${fmtNum(Math.abs(grossVal), d)} ${unit}`,
-                  `Fee: ${prefix}${fmtNum(feeVal, d)} ${unit}`,
-                  `Closed: ${fmtIst(t.close_time)}`,
+                  `Daily Net PnL: ${netSign}${prefix}${fmtNum(Math.abs(netVal), d)} ${unit}`,
+                  `Daily Gross PnL: ${grossSign}${prefix}${fmtNum(Math.abs(grossVal), d)} ${unit}`,
+                  `Daily Fees: ${prefix}${fmtNum(feeVal, d)} ${unit}`,
+                  `Trades: ${day.count} (${day.wins}W / ${day.losses}L)`,
+                  `Cumulative PnL: ${cumSign}${prefix}${fmtNum(Math.abs(cumVal), d)} ${unit}`,
                 ];
               },
             },
@@ -1458,8 +1511,8 @@
 
       // Render all widgets (SYSTEM_DESIGN.md Section 9)
       renderMetrics(state.derived.metrics, state.allPositions);
-      renderChart(state.derived.chartPoints);
-      renderTradeBarChart(state.allPositions);
+      renderChart(state.derived.dailySeries);
+      renderTradeBarChart(state.derived.dailySeries);
       renderCalendar(state.derived.calendar);
       renderTable(state.allPositions);
 
